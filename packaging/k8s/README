@@ -30,6 +30,11 @@
     ```
     This should only take a minute or so.  Use this time to go read up on k3s, it's an interesting project.
 
+    Finally, mark all traffic on the container interface (cni0) as trusted so that kubernetes can handle all of the forwarding.
+    ```
+    sudo firewall-cmd --permanent --zone=trusted --change-interface=cni0
+    sudo firewall-cmd --reload
+    ```
     When everything is done, run the following command to watch the configuration.  You should see it eventually settle.  (ctrl+c to escape the watch command)
     ```
     watch -d kubectl get all -A
