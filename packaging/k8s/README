@@ -147,9 +147,9 @@
 
     Before you can run the image in K8s, you must push it to a registry
     ```
-    buildah login registry.hub.docker.com
-    buildah tag kismet registry.hub.docker.com/my-registry-here/kismet:latest
-    buildah push registry.hub.docker.com/my-registry-here/kismet:latest
+    buildah login quay.io
+    buildah tag kismet quay.io/my-registry-here/kismet:latest
+    buildah push quay.io/my-registry-here/kismet:latest
     ```
     You can use a local registry if you'd like.  You will have to change "my-registry-here" to be your Docker Hub registry name.
 

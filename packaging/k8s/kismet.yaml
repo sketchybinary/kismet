@@ -34,7 +34,7 @@ spec:
         app: kismet-unprivileged
     spec:
       containers:
-      - image: sketchybinary/kismet
+      - image: quay.io/sketchybinary/kismet
         name: kismet-unprivileged
         ports:
         - containerPort: 3501
@@ -45,5 +45,5 @@ spec:
           httpGet:
             path: /
             port: kismet-http
-          initialDelaySeconds: 3
+          initialDelaySeconds: 5
           periodSeconds: 3
