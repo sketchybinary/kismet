@@ -11,8 +11,14 @@ RUN apt-get update && \
     protobuf-compiler protobuf-c-compiler \
     librtlsdr0 libusb-1.0-0-dev 
 
-COPY build-kismet.sh /opt/build-kismet.sh
-RUN /bin/bash /opt/build-kismet.sh
+
+RUN cd /opt && \
+    git clone https://www.kismetwireless.net/git/kismet.git /opt/kismet-2018.git && \
+    cd /opt/kismet-2018.git && \
+    ./configure && \
+    make && \
+    make suidinstall && \
+    make forceconfigs
 
 COPY kismet_site.conf /usr/local/etc/kismet_site.conf
 
