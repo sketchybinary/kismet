@@ -4,7 +4,7 @@
     The build no longer uses Docker anywhere on the system, but the images are available for download at https://hub.docker.com/r/sketchybinary/kismet
 
 - INSTALLING k3s
-    K3s is a lightweight Kubernetes distrobution that is designed for small systems.  If you want a full-fledged Kubernetes API, but don't want to deal with HA and all the configuration headache, K3S has got you covered.
+    K3s is a lightweight Kubernetes distrobution that is designed for small systems.  In the docs, it says it’s best for situations where “Situations where a PhD in k8s clusterology is infeasible“.  If you want a full-fledged Kubernetes API, but don't want to deal with HA and all the configuration headache, K3S has got you covered.
     I'm currently using Fedora 30 Server, but most modern Linux distrobutions should work.  Make sure to start with a clean install. From personal experience, Docker and K3s don't mix.  K3s doesn't use Docker.
 
     Start by pointing your DNS record for your server hostname to the IP of the server.  Or, simply modify the /etc/hosts on the server to have "127.0.0.1 my.server.name"
