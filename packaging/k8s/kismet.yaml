@@ -28,8 +28,20 @@ spec:
   - protocol: TCP
     port: 2501
     name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kismet-api
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: kismet
+  ports:
   - protocol: TCP
     port: 3501
+    nodePort: 30501
     name: api
 
 ---

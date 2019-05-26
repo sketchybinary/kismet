@@ -1,0 +1,8 @@
+[Unit]
+Description=Kismet Wifi Capture for Remote System
+
+[Service]
+ExecStart=/usr/sbin/kismet_cap_linux_wifi --source=wlp46s0 --connect=localhost:30501 
+
+[Install]
+WantedBy=multi-user.target
