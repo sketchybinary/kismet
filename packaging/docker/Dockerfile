@@ -18,7 +18,7 @@ RUN cd /opt/kismet-2018 && \
     make suidinstall && \
     make forceconfigs
 
-COPY kismet_site.conf /usr/local/etc/kismet_site.conf
+COPY /packaging/docker/kismet_site.conf /usr/local/etc/kismet_site.conf
 
 EXPOSE 2501
 EXPOSE 3501
