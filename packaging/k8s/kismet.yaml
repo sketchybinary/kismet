@@ -1,49 +1,65 @@
 ---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/ingress.class: traefik
+  labels:
+    app: kismet
+  name: kismet-ingress
+spec:
+  rules:
+  - host: kismet.k3s.sketchybinary.com
+    http:
+      paths:
+      - backend:
+          serviceName: kismet-service
+          servicePort: http
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: kismet-unprivileged
+  name: kismet-service
   namespace: default
 spec:
-  type: NodePort
   selector:
-    app: kismet-unprivileged
+    app: kismet
   ports:
   - protocol: TCP
-    nodePort: 32501
     port: 2501
-    name: kismet-http
-    targetPort: 2501
+    name: http
   - protocol: TCP
-    nodePort: 32502
     port: 3501
-    name: kismet-api
-    targetPort: 3501
+    name: api
 
 ---
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
-  name: kismet-unprivileged
+  name: kismet
   namespace: default
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: kismet
   template:
     metadata:
       labels:
-        app: kismet-unprivileged
+        app: kismet
     spec:
       containers:
       - image: quay.io/sketchybinary/kismet
-        name: kismet-unprivileged
+        name: kismet
         ports:
         - containerPort: 3501
-          name: kismet-api
+          name: api
         - containerPort: 2501
-          name: kismet-http
+          name: http
         livenessProbe:
           httpGet:
             path: /
-            port: kismet-http
+            port: http
           initialDelaySeconds: 5
           periodSeconds: 3
+---

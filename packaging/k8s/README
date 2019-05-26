@@ -1,7 +1,7 @@
 - KISMET AND Kubernetes -
 
     Kismet can run in kubernetes.  I'm designing this for a standalone box that runs [k3s](https://k3s.io/) and can be fed by a bunch of other sensor boxes.
-    The build no longer uses Docker anywhere on the system, but the images are available for d  ownload at https://hub.docker.com/r/sketchybinary/kismet
+    The build no longer uses Docker anywhere on the system, but the images are available for download at https://quay.io/r/sketchybinary/kismet
 
 - INSTALLING k3s
     K3s is a lightweight Kubernetes distrobution that is designed for small systems.  In the docs, it says it’s best for situations where “Situations where a PhD in k8s clusterology is infeasible“.  If you want a full-fledged Kubernetes API, but don't want to deal with HA and all the configuration headache, K3S has got you covered.
@@ -19,7 +19,7 @@
     sudo firewall-cmd --zone=public --permanent --add-port=6443/tcp
     sudo firewall-cmd --reload
     ```
-    ( If you plan on having multiple nodes in your cluster, you will need to open up 8472/tcp as well. But don't expose that port to the default public zone.)  
+    ( If you plan on having multiple nodes in your cluster, you will need to open up 8472/udp as well. But don't expose that port to the default public zone.)
 
     Now, we can start installing k3s.
     ```
@@ -151,7 +151,7 @@
     buildah tag kismet quay.io/my-registry-here/kismet:latest
     buildah push quay.io/my-registry-here/kismet:latest
     ```
-    You can use a local registry if you'd like.  You will have to change "my-registry-here" to be your Docker Hub registry name.
+    You can use a local registry if you'd like.  You will have to change "my-registry-here" to be your Quay.io registry name (or whatever you want to use, you do you).
 
 - CONFIGURING KISMET -
 
@@ -168,7 +168,6 @@
 
 - RUNNING KISMET ON REMOTE INTERFACES -
 
-    Now you can run capture interfaces on the Docker host or on truly 
-    remote sources as normal:
+    Now you can run capture interfaces on the k3s host or on truly remote sources as normal:
         $ kismet_cap_linux_wifi --connect localhost:3501 --source wlx4494fcf30eb3
 
