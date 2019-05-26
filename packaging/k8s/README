@@ -1,15 +1,27 @@
 - KISMET AND Kubernetes -
 
     Kismet can run in kubernetes.  I'm designing this for a standalone box that runs [k3s](https://k3s.io/) and can be fed by a bunch of other sensor boxes.
-    The build no longer uses Docker anywhere on the system, but the images are available for download at https://hub.docker.com/r/sketchybinary/kismet
+    The build no longer uses Docker anywhere on the system, but the images are available for d  ownload at https://hub.docker.com/r/sketchybinary/kismet
 
 - INSTALLING k3s
     K3s is a lightweight Kubernetes distrobution that is designed for small systems.  In the docs, it says it’s best for situations where “Situations where a PhD in k8s clusterology is infeasible“.  If you want a full-fledged Kubernetes API, but don't want to deal with HA and all the configuration headache, K3S has got you covered.
     I'm currently using Fedora 30 Server, but most modern Linux distrobutions should work.  Make sure to start with a clean install. From personal experience, Docker and K3s don't mix.  K3s doesn't use Docker.
 
     Start by pointing your DNS record for your server hostname to the IP of the server.  Or, simply modify the /etc/hosts on the server to have "127.0.0.1 my.server.name"
+    
+    If you are running firewalld, as I am, you will need to load the kernel module br_netfilter and open up a few ports as well.
+    ```
+    echo "br_netfilter" | sudo tee /etc/modules-load.d/br_netfilter.conf
+    sudo modprobe br_netfilter
+    sudo firewall-cmd --zone=public --permanent --add-service=https
+    sudo firewall-cmd --zone=public --permanent --add-service=dns
+    sudo firewall-cmd --zone=public --permanent --add-port=6445/tcp
+    sudo firewall-cmd --zone=public --permanent --add-port=6443/tcp
+    sudo firewall-cmd --reload
+    ```
+    ( If you plan on having multiple nodes in your cluster, you will need to open up 8472/tcp as well. But don't expose that port to the default public zone.)  
 
-    Then, start installing k3s.
+    Now, we can start installing k3s.
     ```
     wget https://get.k3s.io -O install-k3s.sh
     less install-k3s.sh # Because you shouldn't just blindly run shit you find on the internet
