@@ -9,7 +9,7 @@ RUN apt-get update && \
     libcap-dev libpcap-dev libncurses5-dev libnm-dev libdw-dev \
     libsqlite3-dev libprotobuf-dev libprotobuf-c-dev \
     protobuf-compiler protobuf-c-compiler \
-    librtlsdr0 libusb-1.0-0-dev 
+    librtlsdr0 libusb-1.0
 
 COPY / /opt/kismet-2018/
 RUN cd /opt/kismet-2018 && \

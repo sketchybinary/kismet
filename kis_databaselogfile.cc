@@ -18,18 +18,17 @@
 
 #include "config.h"
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #include "globalregistry.h"
-#include "messagebus.h"
-
 #include "json_adapter.h"
-#include "packetchain.h"
-#include "kis_datasource.h"
-
 #include "kis_databaselogfile.h"
-
-#include "structured.h"
+#include "kis_datasource.h"
 #include "kismet_json.h"
-
+#include "messagebus.h"
+#include "packetchain.h"
+#include "structured.h"
 #include "sqlite3_cpp11.h"
 
 KisDatabaseLogfile::KisDatabaseLogfile():
@@ -126,6 +125,12 @@ bool KisDatabaseLogfile::Log_Open(std::string in_path) {
 
 	_MSG("Opened kismetdb log file '" + in_path + "'", MSGFLAG_INFO);
 
+    if (Globalreg::globalreg->kismet_config->FetchOptBoolean("kis_log_ephemeral_dangerous", false)) {
+        _MSG_INFO("KISMETDB LOG IS IN EPHEMERAL MODE.  LOG WILL *** NOT *** BE PRESERVED WHEN "
+                "KISMET EXITS.");
+        unlink(in_path.c_str());
+    }
+
     if (Globalreg::globalreg->kismet_config->FetchOptBoolean("kis_log_packets", true)) {
         _MSG("Saving packets to the Kismet database log.", MSGFLAG_INFO);
         std::shared_ptr<Packetchain> packetchain =
@@ -157,6 +162,86 @@ bool KisDatabaseLogfile::Log_Open(std::string in_path) {
                     });
     } else {
         packet_timeout_timer = -1;
+    }
+
+    device_timeout =
+        Globalreg::globalreg->kismet_config->FetchOptUInt("kis_log_device_timeout", 0);
+
+    if (device_timeout != 0) {
+        device_timeout_timer = 
+            timetracker->RegisterTimer(SERVER_TIMESLICES_SEC * 60, NULL, 1,
+                    [this](int) -> int {
+
+                    auto pkt_delete = 
+                        fmt::format("DELETE FROM devices WHERE last_time < {}",
+                                time(0) - device_timeout);
+
+                    sqlite3_exec(db, pkt_delete.c_str(), NULL, NULL, NULL);
+
+                    return 1;
+                    });
+    } else {
+        device_timeout_timer = -1;
+    }
+
+    message_timeout =
+        Globalreg::globalreg->kismet_config->FetchOptUInt("kis_log_message_timeout", 0);
+
+    if (message_timeout != 0) {
+        message_timeout_timer = 
+            timetracker->RegisterTimer(SERVER_TIMESLICES_SEC * 60, NULL, 1,
+                    [this](int) -> int {
+
+                    auto pkt_delete = 
+                        fmt::format("DELETE FROM messages WHERE ts_sec < {}",
+                                time(0) - message_timeout);
+
+                    sqlite3_exec(db, pkt_delete.c_str(), NULL, NULL, NULL);
+
+                    return 1;
+                    });
+    } else {
+        message_timeout_timer = -1;
+    }
+
+    alert_timeout =
+        Globalreg::globalreg->kismet_config->FetchOptUInt("kis_log_alert_timeout", 0);
+
+    if (alert_timeout != 0) {
+        alert_timeout_timer = 
+            timetracker->RegisterTimer(SERVER_TIMESLICES_SEC * 60, NULL, 1,
+                    [this](int) -> int {
+
+                    auto pkt_delete = 
+                        fmt::format("DELETE FROM alerts WHERE ts_sec < {}",
+                                time(0) - alert_timeout);
+
+                    sqlite3_exec(db, pkt_delete.c_str(), NULL, NULL, NULL);
+
+                    return 1;
+                    });
+    } else {
+        alert_timeout_timer = -1;
+    }
+
+    snapshot_timeout =
+        Globalreg::globalreg->kismet_config->FetchOptUInt("kis_log_snapshot_timeout", 0);
+
+    if (snapshot_timeout != 0) {
+        snapshot_timeout_timer = 
+            timetracker->RegisterTimer(SERVER_TIMESLICES_SEC * 60, NULL, 1,
+                    [this](int) -> int {
+
+                    auto pkt_delete = 
+                        fmt::format("DELETE FROM snapshots WHERE ts_sec < {}",
+                                time(0) - snapshot_timeout);
+
+                    sqlite3_exec(db, pkt_delete.c_str(), NULL, NULL, NULL);
+
+                    return 1;
+                    });
+    } else {
+        snapshot_timeout_timer = -1;
     }
 
     packet_drop_endp =
@@ -306,6 +391,10 @@ bool KisDatabaseLogfile::Log_Open(std::string in_path) {
             return 1;
         });
 
+    // Post that we've got the logfile ready
+    auto eventbus = Globalreg::FetchMandatoryGlobalAs<Eventbus>();
+    eventbus->publish(std::make_shared<EventDblogOpened>());
+
     return true;
 }
 
@@ -320,6 +409,10 @@ void KisDatabaseLogfile::Log_Close() {
     if (timetracker != NULL) {
         timetracker->RemoveTimer(transaction_timer);
         timetracker->RemoveTimer(packet_timeout_timer);
+        timetracker->RemoveTimer(alert_timeout_timer);
+        timetracker->RemoveTimer(device_timeout_timer);
+        timetracker->RemoveTimer(message_timeout_timer);
+        timetracker->RemoveTimer(snapshot_timeout_timer);
     }
 
     // End the transaction
@@ -750,9 +843,15 @@ void KisDatabaseLogfile::ProcessMessage(std::string in_msg, int in_flags) {
     sqlite3_bind_int64(msg_stmt, spos++, time(0));
 
     if (gpstracker != nullptr) {
-        auto loc = std::make_shared<kis_gps_packinfo>(gpstracker->get_best_location());
-        sqlite3_bind_double(msg_stmt, spos++, loc->lat);
-        sqlite3_bind_double(msg_stmt, spos++, loc->lon);
+        auto loc = std::shared_ptr<kis_gps_packinfo>(gpstracker->get_best_location());
+
+        if (loc != nullptr && loc->fix >= 2) {
+            sqlite3_bind_double(msg_stmt, spos++, loc->lat);
+            sqlite3_bind_double(msg_stmt, spos++, loc->lon);
+        } else {
+            sqlite3_bind_double(msg_stmt, spos++, 0);
+            sqlite3_bind_double(msg_stmt, spos++, 0);
+        }
     } else {
         sqlite3_bind_double(msg_stmt, spos++, 0);
         sqlite3_bind_double(msg_stmt, spos++, 0);
@@ -1205,9 +1304,15 @@ int KisDatabaseLogfile::log_snapshot(kis_gps_packinfo *gps, struct timeval tv,
         sqlite3_bind_double(snapshot_stmt, 4, gps->lon);
     } else {
         if (gpstracker != nullptr) {
-            auto loc = std::make_shared<kis_gps_packinfo>(gpstracker->get_best_location());
-            sqlite3_bind_double(snapshot_stmt, 3, loc->lat);
-            sqlite3_bind_double(snapshot_stmt, 4, loc->lon);
+            auto loc = std::shared_ptr<kis_gps_packinfo>(gpstracker->get_best_location());
+
+            if (loc != nullptr && loc->fix >= 2) {
+                sqlite3_bind_double(snapshot_stmt, 3, loc->lat);
+                sqlite3_bind_double(snapshot_stmt, 4, loc->lon);
+            } else {
+                sqlite3_bind_int(snapshot_stmt, 3, 0);
+                sqlite3_bind_int(snapshot_stmt, 4, 0);
+            }
         } else {
             sqlite3_bind_int(snapshot_stmt, 3, 0);
             sqlite3_bind_int(snapshot_stmt, 4, 0);
@@ -1680,7 +1785,7 @@ unsigned int KisDatabaseLogfile::make_poi_endp_handler(std::ostream& ostream,
     std::shared_ptr<kis_gps_packinfo> loc;
 
     if (gpstracker != nullptr) 
-        loc = std::make_shared<kis_gps_packinfo>(gpstracker->get_best_location());
+        loc = std::shared_ptr<kis_gps_packinfo>(gpstracker->get_best_location());
 
     log_snapshot(loc.get(), tv, "POI", poi_data);
 
