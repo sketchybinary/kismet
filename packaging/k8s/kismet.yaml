@@ -30,6 +30,18 @@ spec:
     name: http
 ---
 apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kismet-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: kismet-api
@@ -43,7 +55,6 @@ spec:
     port: 3501
     nodePort: 30501
     name: api
-
 ---
 apiVersion: extensions/v1beta1
 kind: Deployment
@@ -52,17 +63,22 @@ metadata:
   namespace: default
 spec:
   replicas: 1
-  selector:
-    matchLabels:
-      app: kismet
   template:
     metadata:
-      labels:
-        app: kismet
+        labels:
+          app: kismet
     spec:
+      volumes:
+        - name: kismet-data
+          persistentVolumeClaim:
+            claimName: kismet-data-pvc
       containers:
-      - image: quay.io/sketchybinary/kismet
+      - image: quay.io/sketchybinary/kismet:latest
+        imagePullPolicy: Always
         name: kismet
+        volumeMounts:
+        - mountPath: /data/
+          name: kismet-data
         ports:
         - containerPort: 3501
           name: api
