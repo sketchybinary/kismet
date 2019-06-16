@@ -362,8 +362,7 @@ double ts_now_to_double();
 
 std::string hexstr_to_binstr(const char *hs);
 
-void thread_set_process_name(const std::string& name, pthread_t *thread);
-void thread_set_process_name(const std::string& name, std::thread& thread);
+void thread_set_process_name(const std::string& name);
 
 // Closure promise; executes a function as it leaves scope
 class closure_promise {
@@ -376,6 +375,24 @@ public:
     }
 protected:
     std::function<void (void)> promise;
+};
+
+// Basic constant-time string compare for passwords and session keys
+struct constant_time_string_compare_ne {
+    bool operator()(const std::string& a, const std::string& b) const {
+        bool r = true;
+
+        if (a.length() != b.length())
+            r = false;
+
+        for (size_t x = 0; x < a.length() && x < b.length(); x++) {
+            if (a[x] != b[x])
+                r = false;
+        }
+
+        return r == false;
+    }
+
 };
 
 #endif

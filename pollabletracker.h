@@ -64,6 +64,12 @@ public:
     // to remove themselves once their tasks are complete.
     void RemovePollable(std::shared_ptr<Pollable> in_pollable);
 
+    // Perform a select loop; blocks until polling exits
+    void Selectloop(bool spindown_loop);
+
+    // Perform a cleanup of any operations, like adding a pollable to the list or removing it
+    void Maintenance();
+
     // populate the FD sets for polling, populates rset and wset
     //
     // returns:
@@ -79,14 +85,12 @@ public:
     int ProcessPollableSelect(fd_set rset, fd_set wset);
 
 protected:
-    kis_recursive_timed_mutex pollable_mutex;
+    kis_recursive_timed_mutex pollable_mutex, maintenance_mutex;
 
     std::vector<std::shared_ptr<Pollable>> pollable_vec;
     std::vector<std::shared_ptr<Pollable>> add_vec;
     std::vector<std::shared_ptr<Pollable>> remove_vec;
 
-    // Perform a cleanup of any operations, like adding a pollable to the list or removing it
-    void Maintenance();
 };
 
 #endif

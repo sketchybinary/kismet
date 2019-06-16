@@ -8,7 +8,7 @@
     (at your option) any later version.
 
     Kismet is distributed in the hope that it will be useful,
-      but WITHOUT ANY WARRANTY; without even the implied warranty of
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
@@ -46,7 +46,9 @@
 #include "fmt.h"
 
 // Seconds a lock is allowed to be held before throwing a timeout error
-#define KIS_THREAD_DEADLOCK_TIMEOUT     5
+// Tuning this is a balance between slower systems or systems swapping heavily, 
+// and faulting more quickly.
+#define KIS_THREAD_DEADLOCK_TIMEOUT     15
 
 // Optionally force the custom c++ workaround mutex
 #define ALWAYS_USE_KISMET_MUTEX         0
@@ -309,6 +311,10 @@ public:
     local_locker(kis_recursive_timed_mutex *in) : 
         cpplock(in),
         hold_lock(true) {
+
+        if (in == nullptr)
+            throw(std::runtime_error("threading failure: mutex is null"));
+
 #ifdef DISABLE_MUTEX_TIMEOUT
         cpplock->lock();
 #else
@@ -343,6 +349,10 @@ public:
     local_shared_locker(kis_recursive_timed_mutex *in) : 
         cpplock(in),
         hold_lock(true) {
+
+        if (in == nullptr)
+            throw(std::runtime_error("threading failure: mutex is null"));
+
 #ifdef DISABLE_MUTEX_TIMEOUT
         cpplock->shared_lock();
 #else
@@ -417,7 +427,7 @@ class local_shared_demand_locker {
 public:
     local_shared_demand_locker(kis_recursive_timed_mutex *in) : 
         cpplock(in),
-        hold_lock(false) { }
+        hold_lock(false) { } 
 
     void unlock() {
         if (!hold_lock)
@@ -500,7 +510,10 @@ public:
 // when it leaves scope
 class local_unlocker {
 public:
-    local_unlocker(kis_recursive_timed_mutex *in) : cpplock(in) { }
+    local_unlocker(kis_recursive_timed_mutex *in) : cpplock(in) {
+        if (in == nullptr)
+            throw(std::runtime_error("threading failure: mutex is null"));
+    }
 
     ~local_unlocker() {
         cpplock->unlock();

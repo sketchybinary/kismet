@@ -37,19 +37,13 @@ PipeClient::PipeClient(GlobalRegistry *in_globalreg,
 
     read_fd = -1;
     write_fd = -1;
+
+    // printf("%p pipeclient mutex %p\n", this, &pipe_lock);
 }
 
 PipeClient::~PipeClient() {
-    local_locker lock(&pipe_lock);
-
-    // fprintf(stderr, "debug - ~Pipeclient() %p\n", this);
-
+    // printf("~pipeclient %p\n", this);
     ClosePipes();
-
-    std::shared_ptr<PollableTracker> pollabletracker =
-        std::static_pointer_cast<PollableTracker>(globalreg->FetchGlobal("POLLABLETRACKER"));
-
-    handler.reset();
 }
 
 int PipeClient::OpenPipes(int rpipe, int wpipe) {
@@ -76,13 +70,16 @@ int PipeClient::OpenPipes(int rpipe, int wpipe) {
 }
 
 bool PipeClient::FetchConnected() {
-    local_locker lock(&pipe_lock);
+    local_shared_locker lock(&pipe_lock);
 
-    return read_fd > -1 || write_fd > -1;
+    return handler == nullptr || read_fd > -1 || write_fd > -1;
 }
 
 int PipeClient::MergeSet(int in_max_fd, fd_set *out_rset, fd_set *out_wset) {
     local_locker lock(&pipe_lock);
+
+    if (handler == nullptr)
+        return in_max_fd;
 
     int max_fd = in_max_fd;
 
@@ -113,18 +110,13 @@ int PipeClient::Poll(fd_set& in_rset, fd_set& in_wset) {
     uint8_t *buf;
     size_t len;
     ssize_t ret, iret;
+    size_t avail;
 
-    // fprintf(stderr, "debug - pipeclient - poll rfd %d wfd %d\n", read_fd, write_fd);
-
-    if (read_fd > -1 && FD_ISSET(read_fd, &in_rset)) {
+    if (read_fd > -1 && FD_ISSET(read_fd, &in_rset) && handler != nullptr) {
         // Allocate the biggest buffer we can fit in the ring, read as much
         // as we can at once.
-       
-        while (handler->GetReadBufferAvailable()) {
-            len = handler->ZeroCopyReserveReadBufferData((void **) &buf,
-                    handler->GetReadBufferAvailable());
-
-            // fprintf(stderr, "debug - read buffer available reserved %lu\n", len);
+        while ((avail = handler->GetReadBufferAvailable())) {
+            len = handler->ZeroCopyReserveReadBufferData((void **) &buf, avail);
 
             if ((ret = read(read_fd, buf, len)) <= 0) {
                 if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -140,7 +132,6 @@ int PipeClient::Poll(fd_set& in_rset, fd_set& in_wset) {
 
                     ClosePipes();
 
-                    // fprintf(stderr, "debug - pipeclient - returning from poll\n");
                     return 0;
                 } else {
                     // Jump out of read loop
@@ -149,7 +140,6 @@ int PipeClient::Poll(fd_set& in_rset, fd_set& in_wset) {
                 }
             } else {
                 // Insert into buffer
-                // fprintf(stderr, "debug - pipeclient committing %lu\n", ret);
                 iret = handler->CommitReadBufferData(buf, ret);
 
                 if (!iret) {
@@ -159,8 +149,6 @@ int PipeClient::Poll(fd_set& in_rset, fd_set& in_wset) {
                     return 0;
                 }
             }
-
-            // delete[] buf;
         }
     }
 
@@ -210,10 +198,7 @@ int PipeClient::FlushRead() {
     size_t len;
     ssize_t ret, iret;
 
-    if (read_fd > -1) {
-        // Allocate the biggest buffer we can fit in the ring, read as much
-        // as we can at once.
-       
+    if (read_fd > -1 && handler != nullptr) {
         while (handler->GetReadBufferAvailable() && read_fd > -1) {
             len = handler->ZeroCopyReserveReadBufferData((void **) &buf,
                     handler->GetReadBufferAvailable());
@@ -252,8 +237,13 @@ int PipeClient::FlushRead() {
 }
 
 void PipeClient::ClosePipes() {
+    // printf("%p looking for pipe lock lock %p\n", this, &pipe_lock);
     local_locker lock(&pipe_lock);
+    // printf("%p got pipe lock\n", this);
 
+    handler.reset();
+
+    // printf("%p closing\n", this);
     if (read_fd > -1) {
         close(read_fd);
         read_fd = -1;
@@ -263,5 +253,7 @@ void PipeClient::ClosePipes() {
         close(write_fd);
         write_fd = -1;
     }
+
+    // printf("%p closed\n", this);
 }
 

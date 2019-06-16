@@ -7,7 +7,7 @@
     (at your option) any later version.
 
     Kismet is distributed in the hope that it will be useful,
-      but WITHOUT ANY WARRANTY; without even the implied warranty of
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
@@ -362,6 +362,19 @@ std::string Kis_Net_Httpd::StripSuffix(std::string url) {
 void Kis_Net_Httpd::RegisterMimeType(std::string suffix, std::string mimetype) {
     local_locker lock(&controller_mutex);
     mime_type_map[StrLower(suffix)] = mimetype;
+}
+
+void Kis_Net_Httpd::RegisterAlias(const std::string& in_alias, const std::string& in_dest) {
+    local_locker lock(&controller_mutex);
+    alias_rewrite_map[in_alias] = in_dest;
+}
+
+void Kis_Net_Httpd::RemoveAlias(const std::string& in_alias) {
+    local_locker lock(&controller_mutex);
+
+    auto k = alias_rewrite_map.find(in_alias);
+    if (k != alias_rewrite_map.end())
+        alias_rewrite_map.erase(k);
 }
 
 void Kis_Net_Httpd::RegisterStaticDir(std::string in_prefix, std::string in_path) {
@@ -759,8 +772,14 @@ int Kis_Net_Httpd::http_request_handler(void *cls, struct MHD_Connection *connec
     
     Kis_Net_Httpd_Handler *handler = NULL;
 
-    // Look for the URI prefix
+    // Collapse multiple slashes
     std::string url(in_url);
+
+    size_t spos;
+    while ((spos = url.find("//")) != std::string::npos)
+        url = url.replace(spos, 2, "/");
+
+    // Look for the URI prefix
     auto uri_prefix_len = kishttpd->uri_prefix.length();
 
     if (uri_prefix_len > 0 && url.substr(0, uri_prefix_len) == kishttpd->uri_prefix) {
@@ -769,6 +788,14 @@ int Kis_Net_Httpd::http_request_handler(void *cls, struct MHD_Connection *connec
         // Don't kill a leading '/' if the user specified a match that eats it
         if (url[0] != '/')
             url = "/" + url;
+    }
+
+    {
+        // Lock controller and process rewrites
+        local_shared_locker conclock(&(kishttpd->controller_mutex));
+        auto rw = kishttpd->alias_rewrite_map.find(url);
+        if (rw != kishttpd->alias_rewrite_map.end())
+            url = rw->second;
     }
     
     // If we don't have a connection state, make one

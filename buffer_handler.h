@@ -164,6 +164,8 @@ protected:
 // to the ring buffers.  The buffer handler then automatically calls bound 
 // handlers for read/write events.
 //
+class BufferHandlerGenericLocker;
+
 class BufferHandlerGeneric {
 public:
     BufferHandlerGeneric();
@@ -299,6 +301,8 @@ public:
     // Set a protocol error callback; line level drivers should set this and initiate
     // a shutdown of the line connections
     virtual void SetProtocolErrorCb(std::function<void (void)> in_cb);
+
+    friend class BufferHandlerGenericLocker;
 
 protected:
     // Generic buffers

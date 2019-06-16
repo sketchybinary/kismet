@@ -32,12 +32,6 @@ BufferHandlerGeneric::BufferHandlerGeneric() {
 }
 
 BufferHandlerGeneric::~BufferHandlerGeneric() {
-    local_locker lock(&handler_locker);
-    local_locker rclock(&r_callback_locker);
-    local_locker wclock(&w_callback_locker);
-
-    // fprintf(stderr, "debug - ~rbh inside locks\n");
-
     if (read_buffer)
         delete read_buffer;
 
@@ -447,7 +441,7 @@ void BufferHandlerGeneric::SetProtocolErrorCb(std::function<void (void)> in_cb) 
 }
 
 void BufferHandlerGeneric::ProtocolError() {
-    local_locker lock(&handler_locker);
+    // local_locker lock(&handler_locker);
 
     if (protoerror_cb != NULL)
         protoerror_cb();

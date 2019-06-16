@@ -24,7 +24,6 @@ PollableTracker::PollableTracker() {
 }
 
 PollableTracker::~PollableTracker() {
-    local_locker lock(&pollable_mutex);
 
 }
 
@@ -60,11 +59,64 @@ void PollableTracker::Maintenance() {
     add_vec.clear();
 }
 
-int PollableTracker::MergePollableFds(fd_set *rset, fd_set *wset) {
-    // Perform a maintenance run at the beginning; only the main thread select loop can ever call us
-    // so we don't lock any mutexes (outside of maintenance)
-    Maintenance();
+void PollableTracker::Selectloop(bool spindown_mode) {
+    sigset_t mask, oldmask;
+    sigemptyset(&mask);
+    sigemptyset(&oldmask);
+    sigaddset(&mask, SIGCHLD);
+    sigaddset(&mask, SIGTERM);
 
+    int max_fd;
+    fd_set rset, wset;
+    struct timeval tm;
+    int consec_badfd = 0;
+
+    time_t shutdown_time = time(0) + 3;
+
+    // Core loop
+    while (1) {
+        if (spindown_mode && time(0) > shutdown_time)
+            break;
+
+        if ((!spindown_mode && Globalreg::globalreg->spindown) || Globalreg::globalreg->fatal_condition) 
+            break;
+
+        Maintenance();
+
+        tm.tv_sec = 0;
+        tm.tv_usec = 100000;
+
+        max_fd = MergePollableFds(&rset, &wset);
+
+        // Block signals while doing io loops */
+        sigprocmask(SIG_BLOCK, &mask, &oldmask);
+
+        if (select(max_fd + 1, &rset, &wset, NULL, &tm) < 0) {
+            if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+                if (errno == EBADF) {
+                    consec_badfd++;
+
+                    if (consec_badfd > 20) 
+                        throw std::runtime_error(fmt::format("select() > 20 consecutive badfd errors, latest {} {}",
+                                    errno, strerror(errno)));
+                } else {
+                    throw std::runtime_error(fmt::format("select() failed: {} {}", errno, strerror(errno)));
+                }
+            }
+        }
+
+        consec_badfd = 0;
+
+        // Run maintenance again so we don't gather purged records after the select()
+        Maintenance();
+
+        ProcessPollableSelect(rset, wset);
+
+        sigprocmask(SIG_UNBLOCK, &mask, &oldmask);
+    }
+}
+
+int PollableTracker::MergePollableFds(fd_set *rset, fd_set *wset) {
     int max_fd = 0;
 
     FD_ZERO(rset);
@@ -79,9 +131,6 @@ int PollableTracker::MergePollableFds(fd_set *rset, fd_set *wset) {
 int PollableTracker::ProcessPollableSelect(fd_set rset, fd_set wset) {
     int r;
     int num = 0;
-
-    // Perform the maintenance check again to clear anything that got nuked during the merge stage
-    Maintenance();
 
     for (auto i : pollable_vec) {
         r = i->Poll(rset, wset);
