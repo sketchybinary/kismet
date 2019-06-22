@@ -7,7 +7,7 @@
     (at your option) any later version.
 
     Kismet is distributed in the hope that it will be useful,
-      but WITHOUT ANY WARRANTY; without even the implied warranty of
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
@@ -31,23 +31,39 @@
 #include "pollabletracker.h"
 
 PipeClient::PipeClient(GlobalRegistry *in_globalreg, 
-        std::shared_ptr<BufferHandlerGeneric> in_rbhandler) {
-    globalreg = in_globalreg;
-    handler = in_rbhandler;
-
-    read_fd = -1;
-    write_fd = -1;
-
-    // printf("%p pipeclient mutex %p\n", this, &pipe_lock);
-}
+        std::shared_ptr<BufferHandlerGeneric> in_rbhandler) :
+    globalreg {Globalreg::globalreg},
+    pipe_mutex {std::make_shared<kis_recursive_timed_mutex>()},
+    handler {in_rbhandler},
+    read_fd {-1},
+    write_fd {-1} { }
 
 PipeClient::~PipeClient() {
+    local_locker l(pipe_mutex);
+
     // printf("~pipeclient %p\n", this);
-    ClosePipes();
+    if (read_fd > -1) {
+        close(read_fd);
+        read_fd = -1;
+    }
+
+    if (write_fd > -1) {
+        close(write_fd);
+        write_fd = -1;
+    }
+}
+
+void PipeClient::SetMutex(std::shared_ptr<kis_recursive_timed_mutex> in_parent) {
+    local_locker l(pipe_mutex);
+
+    if (in_parent != nullptr)
+        pipe_mutex = in_parent;
+    else
+        pipe_mutex = std::make_shared<kis_recursive_timed_mutex>();
 }
 
 int PipeClient::OpenPipes(int rpipe, int wpipe) {
-    local_locker lock(&pipe_lock);
+    local_locker lock(pipe_mutex);
 
     if (read_fd > -1 || write_fd > -1) {
         _MSG("Pipe client asked to bind to pipes but already connected to a "
@@ -70,13 +86,13 @@ int PipeClient::OpenPipes(int rpipe, int wpipe) {
 }
 
 bool PipeClient::FetchConnected() {
-    local_shared_locker lock(&pipe_lock);
+    local_shared_locker lock(pipe_mutex);
 
     return handler == nullptr || read_fd > -1 || write_fd > -1;
 }
 
 int PipeClient::MergeSet(int in_max_fd, fd_set *out_rset, fd_set *out_wset) {
-    local_locker lock(&pipe_lock);
+    local_locker lock(pipe_mutex);
 
     if (handler == nullptr)
         return in_max_fd;
@@ -103,7 +119,7 @@ int PipeClient::MergeSet(int in_max_fd, fd_set *out_rset, fd_set *out_wset) {
 }
 
 int PipeClient::Poll(fd_set& in_rset, fd_set& in_wset) {
-    local_locker lock(&pipe_lock);
+    local_locker lock(pipe_mutex);
 
     std::stringstream msg;
 
@@ -171,9 +187,11 @@ int PipeClient::Poll(fd_set& in_rset, fd_set& in_wset) {
 
                     handler->PeekFreeWriteBufferData(buf);
 
-                    ClosePipes();
                     // Push the error upstream
                     handler->BufferError(msg.str());
+
+                    ClosePipes();
+
                     return 0;
                 }
             } else {
@@ -190,7 +208,7 @@ int PipeClient::Poll(fd_set& in_rset, fd_set& in_wset) {
 }
 
 int PipeClient::FlushRead() {
-    local_locker lock(&pipe_lock);
+    local_locker lock(pipe_mutex);
 
     std::stringstream msg;
 
@@ -238,10 +256,8 @@ int PipeClient::FlushRead() {
 
 void PipeClient::ClosePipes() {
     // printf("%p looking for pipe lock lock %p\n", this, &pipe_lock);
-    local_locker lock(&pipe_lock);
+    local_locker lock(pipe_mutex);
     // printf("%p got pipe lock\n", this);
-
-    handler.reset();
 
     // printf("%p closing\n", this);
     if (read_fd > -1) {

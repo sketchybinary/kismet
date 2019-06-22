@@ -246,12 +246,6 @@ void SpindownKismet(std::shared_ptr<PollableTracker> pollabletracker) {
     if (daemonize == 0)
         fprintf(stderr, "\n*** KISMET IS SHUTTING DOWN ***\n");
 
-    sigset_t mask, oldmask;
-    sigemptyset(&mask);
-    sigemptyset(&oldmask);
-    sigaddset(&mask, SIGCHLD);
-    sigaddset(&mask, SIGTERM);
-
     if (pollabletracker != nullptr)
         pollabletracker->Selectloop(true);
 
@@ -286,8 +280,6 @@ void SpindownKismet(std::shared_ptr<PollableTracker> pollabletracker) {
     }
 
     globalregistry->DeleteLifetimeGlobals();
-
-    sigprocmask(SIG_UNBLOCK, &mask, &oldmask);
 
     exit(globalregistry->fatal_condition ? 1 : 0);
 }
@@ -926,6 +918,7 @@ int main(int argc, char *argv[], char *envp[]) {
     _MSG("Starting Kismet web server...", MSGFLAG_INFO);
     Globalreg::FetchMandatoryGlobalAs<Kis_Net_Httpd>()->StartHttpd();
 
+#if 0
     sigset_t mask, oldmask;
     sigemptyset(&mask);
     sigemptyset(&oldmask);
@@ -978,6 +971,13 @@ int main(int argc, char *argv[], char *envp[]) {
         // Tick the timetracker
         timetracker->Tick();
     }
+#endif
+
+#if 1
+    // Independent time and select threads, which has had problems with timing conflicts
+    timetracker->SpawnTimetrackerThread();
+    pollabletracker->Selectloop(false);
+#endif
 
     SpindownKismet(pollabletracker);
 }

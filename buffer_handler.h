@@ -7,7 +7,7 @@
     (at your option) any later version.
 
     Kismet is distributed in the hope that it will be useful,
-      but WITHOUT ANY WARRANTY; without even the implied warranty of
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
@@ -169,8 +169,9 @@ class BufferHandlerGenericLocker;
 class BufferHandlerGeneric {
 public:
     BufferHandlerGeneric();
-
     virtual ~BufferHandlerGeneric();
+
+    virtual void SetMutex(std::shared_ptr<kis_recursive_timed_mutex> in_parent);
 
     // Basic size ops
     virtual ssize_t GetReadBufferSize();
@@ -309,16 +310,19 @@ protected:
     CommonBuffer *read_buffer;
     CommonBuffer *write_buffer;
 
-    // Interfaces we notify when there has been activity on a buffer
+    // Interfaces we notify when there has been activity on a buffer; use atomic booleans
+    // to indicate if the function is available
+    std::atomic<bool> wbuf_notify_avail, rbuf_notify_avail;
     BufferInterface *wbuf_notify;
     BufferInterface *rbuf_notify;
 
-    kis_recursive_timed_mutex handler_locker, r_callback_locker, w_callback_locker;
+    std::shared_ptr<kis_recursive_timed_mutex> handler_mutex;
 
     std::function<void (void)> protoerror_cb;
 
-    std::function<void (size_t)> readbuf_drain_cb;
+    std::atomic<bool> wbuf_drain_avail, rbuf_drain_avail;
     std::function<void (size_t)> writebuf_drain_cb;
+    std::function<void (size_t)> readbuf_drain_cb;
 };
 
 template<class B> 

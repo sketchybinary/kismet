@@ -7,7 +7,7 @@
     (at your option) any later version.
 
     Kismet is distributed in the hope that it will be useful,
-      but WITHOUT ANY WARRANTY; without even the implied warranty of
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
@@ -65,11 +65,11 @@ public:
 protected:
     unsigned char *buffer;
     // Total size
-    size_t buffer_sz;
+    std::atomic<size_t> buffer_sz;
     // Where reads start
-    size_t start_pos;
+    std::atomic<size_t> start_pos;
     // Length of data currently in buffer
-    size_t length;
+    std::atomic<size_t> length;
 
     // Do we need to free our peeked or committed data?
     std::atomic<bool> free_peek, free_commit;

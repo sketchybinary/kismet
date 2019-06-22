@@ -45,6 +45,8 @@ public:
     PipeClient(GlobalRegistry *in_globalreg, std::shared_ptr<BufferHandlerGeneric> in_rbhandler);
     virtual ~PipeClient();
 
+    virtual void SetMutex(std::shared_ptr<kis_recursive_timed_mutex> in_parent);
+
     // Bind to a r/w pair of pipes
     int OpenPipes(int rpipe, int wpipe);
     void ClosePipes();
@@ -59,9 +61,10 @@ public:
     bool FetchConnected();
 
 protected:
-    kis_recursive_timed_mutex pipe_lock;
-
     GlobalRegistry *globalreg;
+
+    std::shared_ptr<kis_recursive_timed_mutex> pipe_mutex;
+
     std::shared_ptr<BufferHandlerGeneric> handler;
 
     std::atomic<int> read_fd, write_fd;

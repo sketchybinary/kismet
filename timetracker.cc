@@ -45,8 +45,19 @@ Timetracker::Timetracker() {
 
 }
 
+void Timetracker::SpawnTimetrackerThread() {
+    time_dispatch_t =
+        std::thread([this]() {
+                thread_set_process_name("timers");
+                time_dispatcher();
+            });
+}
+
 Timetracker::~Timetracker() {
     shutdown = true;
+
+    if (time_dispatch_t.joinable())
+        time_dispatch_t.join();
 
     // time_dispatch_t.join();
 
@@ -150,7 +161,7 @@ void Timetracker::Tick() {
 }
 
 void Timetracker::time_dispatcher() {
-    while (!shutdown) {
+    while (!shutdown && !Globalreg::globalreg->spindown && !Globalreg::globalreg->fatal_condition) {
         local_demand_locker lock(&time_mutex);
 
         // Calculate the next tick

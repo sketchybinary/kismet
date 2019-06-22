@@ -7,7 +7,7 @@
     (at your option) any later version.
 
     Kismet is distributed in the hope that it will be useful,
-      but WITHOUT ANY WARRANTY; without even the implied warranty of
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
@@ -32,8 +32,9 @@
 
 TcpClientV2::TcpClientV2(GlobalRegistry *in_globalreg, 
         std::shared_ptr<BufferHandlerGeneric> in_rbhandler) :
-    globalreg {in_globalreg},
+    globalreg {Globalreg::globalreg},
     handler {in_rbhandler},
+    tcp_mutex {std::make_shared<kis_recursive_timed_mutex>()} ,
     pending_connect {false}, 
     connected {false}, 
     cli_fd {-1} { }
@@ -42,8 +43,17 @@ TcpClientV2::~TcpClientV2() {
     Disconnect();
 }
 
+void TcpClientV2::SetMutex(std::shared_ptr<kis_recursive_timed_mutex> in_parent) {
+    local_locker l(tcp_mutex);
+
+    if (in_parent != nullptr)
+        tcp_mutex = in_parent;
+    else
+        tcp_mutex = std::make_shared<kis_recursive_timed_mutex>();
+}
+
 int TcpClientV2::Connect(std::string in_host, unsigned int in_port) {
-    local_locker l(&tcp_mutex);
+    local_locker l(tcp_mutex);
 
     std::stringstream msg;
 
@@ -112,7 +122,7 @@ int TcpClientV2::Connect(std::string in_host, unsigned int in_port) {
 }
 
 int TcpClientV2::MergeSet(int in_max_fd, fd_set *out_rset, fd_set *out_wset) {
-    local_locker l(&tcp_mutex);
+    local_locker l(tcp_mutex);
 
     // All we fill in is the descriptor for writing if we're still trying to
     // connect
@@ -141,7 +151,7 @@ int TcpClientV2::MergeSet(int in_max_fd, fd_set *out_rset, fd_set *out_wset) {
 }
 
 int TcpClientV2::Poll(fd_set& in_rset, fd_set& in_wset) {
-    local_locker l(&tcp_mutex);
+    local_locker l(tcp_mutex);
     
     std::string msg;
 
@@ -289,7 +299,7 @@ int TcpClientV2::Poll(fd_set& in_rset, fd_set& in_wset) {
 }
 
 void TcpClientV2::Disconnect() {
-    local_locker l(&tcp_mutex);
+    local_locker l(tcp_mutex);
 
     if (pending_connect || connected) {
         if (cli_fd >= 0)
@@ -303,7 +313,7 @@ void TcpClientV2::Disconnect() {
 }
 
 bool TcpClientV2::FetchConnected() {
-    local_locker l(&tcp_mutex);
+    local_shared_locker l(tcp_mutex);
 
     if (connected || pending_connect)
         return true;
