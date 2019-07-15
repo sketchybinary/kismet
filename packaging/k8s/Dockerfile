@@ -11,13 +11,19 @@ RUN apt-get update && \
     protobuf-compiler protobuf-c-compiler \
     librtlsdr0 libusb-1.0
 
-COPY build-kismet.sh /opt/build-kismet.sh
-RUN /bin/bash /opt/build-kismet.sh
+COPY / /opt/kismet-2018/
+RUN cd /opt/kismet-2018 && \
+    ./configure && \
+    make -j$(nproc) && \
+    make suidinstall && \
+    make forceconfigs && \
+    cp /opt/kismet-2018/packaging/k8s/kismet_site.conf /usr/local/etc/kismet_site.conf
 
-COPY kismet_site.conf /usr/local/etc/kismet_site.conf
 
 EXPOSE 2501
 EXPOSE 3501
+
+VOLUME /root/.kismet/
 
 CMD ["/usr/local/bin/kismet", "--no-ncurses"]
 

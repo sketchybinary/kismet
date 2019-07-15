@@ -1,0 +1,178 @@
+- KISMET AND Kubernetes -
+
+    Kismet can run in kubernetes.  I'm designing this for a standalone box that runs [k3s](https://k3s.io/) and can be fed by a bunch of other sensor boxes.
+    The build no longer uses Docker anywhere on the system, but the images are available for download at https://quay.io/r/sketchybinary/kismet
+
+- INSTALLING k3s
+    K3s is a lightweight Kubernetes distrobution that is designed for small systems.  In the docs, it says it’s best for situations where “Situations where a PhD in k8s clusterology is infeasible“.  If you want a full-fledged Kubernetes API, but don't want to deal with HA and all the configuration headache, K3S has got you covered.
+    I'm currently using Fedora 30 Server, but most modern Linux distrobutions should work.  Make sure to start with a clean install. From personal experience, Docker and K3s don't mix.  K3s doesn't use Docker.
+
+    Start by pointing your DNS record for your server hostname to the IP of the server.  Or, simply modify the /etc/hosts on the server to have "127.0.0.1 my.server.name"
+    
+    If you are running firewalld, as I am, you will need to load the kernel module br_netfilter and open up a few ports as well.
+    ```
+    echo "br_netfilter" | sudo tee /etc/modules-load.d/br_netfilter.conf
+    sudo modprobe br_netfilter
+    sudo firewall-cmd --zone=public --permanent --add-service=https
+    sudo firewall-cmd --zone=public --permanent --add-service=dns
+    sudo firewall-cmd --zone=public --permanent --add-port=6445/tcp
+    sudo firewall-cmd --zone=public --permanent --add-port=6443/tcp
+    sudo firewall-cmd --reload
+    ```
+    ( If you plan on having multiple nodes in your cluster, you will need to open up 8472/udp as well. But don't expose that port to the default public zone.)
+
+    Now, we can start installing k3s.
+    ```
+    wget https://get.k3s.io -O install-k3s.sh
+    less install-k3s.sh # Because you shouldn't just blindly run shit you find on the internet
+    chmod +x install-k3s.sh
+    ./install-k3s.sh
+    ```
+    This should only take a minute or so.  Use this time to go read up on k3s, it's an interesting project.
+
+    Finally, mark all traffic on the container interface (cni0) as trusted so that kubernetes can handle all of the forwarding.
+    ```
+    sudo firewall-cmd --permanent --zone=trusted --change-interface=cni0
+    sudo firewall-cmd --reload
+    ```
+    When everything is done, run the following command to watch the configuration.  You should see it eventually settle.  (ctrl+c to escape the watch command)
+    ```
+    watch -d kubectl get all -A
+    ```
+
+    Once that is done, you will want to configure a storage provisioner.  I'm not going to go into a lot of details, but if you are only using one node and would like to use the local disk,
+    deploy [local-path-provisioner](https://github.com/rancher/local-path-provisioner).
+
+    ```
+    kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+    ```
+    That's it.
+
+    Now, when you provision persistent volumes for your containers, they will show up in a path in /opt/local-path-provisioner.  Checkout their Github page to figure out how to customize this.
+
+    Finally, let's test to make sure that everything is running correctly. We'll start by deploying a simple nginx deployment, then test the storage components.
+
+    To deploy Nginx, write the following to a file, perhaps nginx-test.yaml
+    ```
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+    name: nginx-unprivileged-test
+    namespace: default
+    spec:
+    type: NodePort
+    selector:
+        app: nginx-unprivileged-test
+    ports:
+    - protocol: TCP
+        nodePort: 30123
+        port: 8080
+        name: http
+        targetPort: 8080
+    ---
+    apiVersion: extensions/v1beta1
+    kind: Deployment
+    metadata:
+    name: nginx-unprivileged-test
+    namespace: default
+    spec:
+    replicas: 1
+    template:
+        metadata:
+        labels:
+            app: nginx-unprivileged-test
+        spec:
+        containers:
+        - image: nginxinc/nginx-unprivileged
+            name: nginx-unprivileged-test
+            ports:
+            - containerPort: 8080
+            name: http
+            livenessProbe:
+            httpGet:
+                path: /
+                port: http
+            initialDelaySeconds: 3
+            periodSeconds: 3
+    ```
+    Then deploy it with ```kubectl apply -f nginx-test.yaml```
+
+    If you go to your cluster's IP address on port 30123 (defined in the nodePort variable), you should see an Nginx test page.
+
+    Next, let's test the storage.
+
+    Create a Persistent Volume (pv) then a pod that uses it by binding a Persistent Volume Claim (pvc)
+    ```
+    kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pvc.yaml
+    kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod.yaml
+    kubectl get pv
+    kubectl get pvc
+    kubectl get pod
+    ```
+    If any of those are stuck in the state "pending", go back to the Github page for local-path-provisioner and debug it.
+
+    If the pod is in state "running", we can try writing text to a file on the claim as well
+    ```
+    kubectl exec volume-test -- sh -c "echo local-path-test > /data/test"
+    ```
+
+    Now, if you cd into `/opt/local-path-provisioner` (or whatever you setup in the config), you should see a folder with some kind of random string, and inside that folder, there should be a file that you can `cat` out that has the text we echoed.
+
+    If all that worked, you're good to go!
+
+
+- DEPLOYING KISMET TO K8S
+    First, confirm that you can talk to your cluster with the following command
+    ```
+    kubectl get nodes
+    ```
+
+
+    At this point, you will want to customize the kismet.yaml.  It should work out of the box, but if you'd like to use you're own image, you can change the container:image line.
+    
+    Then, deploy the service by running.
+
+    ```
+    kubectl apply -f kismet.yaml
+    ```
+
+- BUILDING A CONTAINER IMAGE -
+    To build the system, use `buildah`.  This lets you build and interact with container images without having a root daemon.
+    For more information, start with their Github page [Buildah](https://github.com/containers/buildah/blob/master/install.md)
+
+    For simple builds, start by cloning the repo and running `buildah` at the base
+    ```
+    git clone https://github.com/sketchybinary/kismet.git
+    cd kismet
+    buildah bud -t kismet -f packaging/k8s/ ./
+    ```
+
+    This will pull an Ubuntu 16.04, the required dependencies, compile and install kismet, and build an image tagged 'kismet'.
+
+    Before you can run the image in K8s, you must push it to a registry
+    ```
+    buildah login quay.io
+    buildah tag kismet quay.io/my-registry-here/kismet:latest
+    buildah push quay.io/my-registry-here/kismet:latest
+    ```
+    You can use a local registry if you'd like.  You will have to change "my-registry-here" to be your Quay.io registry name (or whatever you want to use, you do you).
+
+- CONFIGURING KISMET -
+
+    Configuring Kismet is best done with the kismet_site.conf override
+    config; see the Kismet README for more information about how the
+    override config works.
+    
+    Using this file you can enable remote capture, set the server 
+    name and attributes, and set the password manually.
+    
+    Generally, you should either edit this file before building the
+    image, or copy it into the container after creation.
+
+
+- RUNNING KISMET ON REMOTE INTERFACES -
+
+    Now you can run capture interfaces on the k3s host or on truly remote sources as normal:
+        $ kismet_cap_linux_wifi --connect localhost:3501 --source wlx4494fcf30eb3
+
