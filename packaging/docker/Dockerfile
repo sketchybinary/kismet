@@ -19,5 +19,6 @@ COPY kismet_site.conf /usr/local/etc/kismet_site.conf
 EXPOSE 2501
 EXPOSE 3501
 
-CMD ["/usr/local/bin/kismet", "--no-ncurses"]
+VOLUME /root/.kismet/
 
+CMD ["/usr/local/bin/kismet", "--no-ncurses"]

@@ -6,8 +6,8 @@
 
 - BUILDING A DOCKER IMAGE -
 
-    To compile a docker image of Kismet:
-        $ docker build -t kismet-git .
+    To compile a docker image of Kismet (run from project root):
+        $ docker build -t kismet-git -f packaging/docker/Dockerfile .
     
     This will pull an Ubuntu 16.04, the required dependencies, the 
     latest Kismet git, and build an image named 'kismet-git'.
