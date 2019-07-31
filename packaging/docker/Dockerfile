@@ -75,5 +75,6 @@ EXPOSE 2501
 EXPOSE 3501
 
 VOLUME /data/
+VOLUME /root/.kismet/
 
 CMD ["/usr/local/bin/kismet", "--no-ncurses"]
