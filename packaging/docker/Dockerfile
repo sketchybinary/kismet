@@ -69,7 +69,8 @@ RUN apt-get update && apt-get install -y \
     libusb-1.0-0-dev
 
 COPY --from=build /usr/local /usr/local
-COPY --from=build /opt/ /opt/
+COPY --from=build /opt/kismet/*.cc /opt/kismet/
+COPY --from=build /opt/kismet/*.h /opt/kismet/
 COPY /packaging/docker/kismet_site.conf /usr/local/etc/kismet_site.conf
 
 EXPOSE 2501
