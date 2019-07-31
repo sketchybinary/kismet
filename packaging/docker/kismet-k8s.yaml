@@ -42,6 +42,18 @@ spec:
       storage: 20Gi
 ---
 apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kismet-config-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: kismet-api
@@ -69,6 +81,9 @@ spec:
           app: kismet
     spec:
       volumes:
+        - name: kismet-config
+          persistentVolumeClaim:
+            claimName: kismet-config-pvc
         - name: kismet-data
           persistentVolumeClaim:
             claimName: kismet-data-pvc
@@ -79,6 +94,8 @@ spec:
         volumeMounts:
         - mountPath: /data/
           name: kismet-data
+        - mountPath: /root/.kismet
+          name: kismet-config
         ports:
         - containerPort: 3501
           name: api
